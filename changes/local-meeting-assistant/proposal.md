@@ -44,10 +44,11 @@ None. This change introduces a new application and new capabilities.
 
 ## Impact
 
-- New macOS application target using Swift/SwiftUI.
+- New macOS 14+ application target using Swift/SwiftUI for Apple Silicon Macs.
 - New native audio-capture layer using macOS microphone and system-audio APIs.
 - New local speech-to-text runtime integration.
 - New local LLM runtime integration.
+- In-app provisioning for supported transcription and note-generation models.
 - New local persistence layer for meetings, transcript segments, user notes, generated notes, and model configuration.
 - New permissions UX for microphone and system-audio capture.
 - New automated unit/integration tests using deterministic prerecorded fixtures; live meetings are not required for the core test suite.

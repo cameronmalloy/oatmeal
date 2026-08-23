@@ -2,7 +2,7 @@
 
 ## 1. Project Foundation
 
-- [ ] 1.1 Create the macOS Swift/SwiftUI application target and feature/module boundaries described in `design.md`, and verify the app builds and launches in Debug configuration.
+- [ ] 1.1 Create the macOS 14.0 Swift/SwiftUI application target for Apple Silicon and the feature/module boundaries described in `design.md`, and verify the app builds and launches in Debug configuration.
 - [ ] 1.2 Define shared meeting lifecycle, audio-source, transcript-segment, user-note, generated-note, and model-configuration domain types, and verify domain unit tests compile without depending on UI or concrete inference runtimes.
 - [ ] 1.3 Implement the explicit meeting lifecycle state machine (`idle` through `completed` plus failure/degraded states), and verify unit tests cover valid transitions and reject invalid/racy transitions.
 
@@ -30,8 +30,9 @@
 - [ ] 4.4 Implement incremental partial/final result handling while persisting only finalized transcript segments, and verify partial replacements do not create duplicate durable transcript rows.
 - [ ] 4.5 Map microphone results to `Me` and system-audio results to `Others`, and verify source-label unit/integration tests for both streams.
 - [ ] 4.6 Order persisted/displayed transcript segments by meeting timestamps rather than inference completion order, and verify an out-of-order fake-engine test renders the correct conversation order.
-- [ ] 4.7 Implement missing/invalid transcription-model gating before meeting start, and verify a meeting cannot enter normal `capturing` state when model validation fails.
-- [ ] 4.8 Implement recoverable STT inference/backlog error status, and verify a forced failure after successful segments leaves prior finalized transcript rows readable.
+- [ ] 4.7 Implement curated in-app transcription-model provisioning with size/quality guidance, source links, disk-space validation, progress, cancellation, selection, and Application Support storage, and verify onboarding cannot finish until a downloaded model validates successfully.
+- [ ] 4.8 Implement missing/invalid transcription-model gating before meeting start, and verify a meeting cannot enter normal `capturing` state when model validation fails.
+- [ ] 4.9 Implement recoverable STT inference/backlog error status, and verify a forced failure after successful segments leaves prior finalized transcript rows readable.
 
 ## 5. Live Meeting Experience and User Notes
 
@@ -45,7 +46,7 @@
 
 - [ ] 6.1 Define the runtime-independent `NoteGenerationEngine` contract and compatible-model validation behavior, and verify generation-service tests use a fake engine without concrete llama.cpp dependencies.
 - [ ] 6.2 Integrate `llama.cpp` for compatible local GGUF models and verify an offline local inference smoke test returns generated text from a known small fixture/model configuration.
-- [ ] 6.3 Implement local model selection/configuration for transcription and generation model artifacts, and verify changed generation selection is used on the next generation request without changing meeting source data.
+- [ ] 6.3 Implement deferred in-app note-generation model provisioning with the same download behavior, and verify the first generation request can download/select a compatible model while changed selection is used on the next request without changing meeting source data.
 - [ ] 6.4 Implement versioned prompt assembly from meeting metadata, ordered finalized transcript, and timestamped user notes, and verify prompt tests include both source types with explicit `Me`/`Others` attribution.
 - [ ] 6.5 Implement required structured Markdown output sections (Summary, Decisions, Action Items, Open Questions, Important Context), and verify generated-output validation detects missing top-level sections.
 - [ ] 6.6 Add grounding instructions that prohibit invented owners/dates/decisions and test with a fixture lacking a due date to verify the prompt/output contract does not require one.
@@ -67,6 +68,7 @@
 - [ ] 8.2 Audit transcription and generation paths to ensure meeting content is not sent to network APIs, and verify automated tests can complete core inference workflows in an environment where outbound networking is disabled.
 - [ ] 8.3 Ensure diagnostics/telemetry configuration does not transmit meeting audio, transcript, user-note, generated-note, or prompt content, and verify logging tests redact/omit sensitive meeting payloads.
 - [ ] 8.4 Verify explicit deletion removes persisted meeting text/metadata managed by the application, and document the local storage locations covered by deletion behavior.
+- [ ] 8.5 Verify model-download requests contain no meeting content and that all capture, transcription, and generation workflows remain network-independent after provisioning.
 
 ## 9. End-to-End and Acceptance Verification
 

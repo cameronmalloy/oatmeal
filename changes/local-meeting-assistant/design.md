@@ -29,9 +29,9 @@ The v1 transcript model intentionally distinguishes only `Me` and `Others`. Remo
 
 ## Decisions
 
-### 1. Native Swift/SwiftUI application
+### 1. Native Swift/SwiftUI application for macOS 14+ on Apple Silicon
 
-Build the v1 UI and application lifecycle in Swift/SwiftUI.
+Build the v1 UI and application lifecycle in Swift/SwiftUI with a macOS 14.0 deployment target. Support Apple Silicon only in v1.
 
 **Rationale:** Audio permissions, ScreenCaptureKit, microphone capture, application lifecycle, sandboxing, and macOS distribution are central to the product. A native shell removes unnecessary bridging around the most platform-specific subsystem.
 
@@ -237,6 +237,14 @@ Do not inspect running apps, browser tabs, calendars, or audio activity to infer
 
 **Rationale:** Manual control is privacy-friendly, deterministic, testable, and removes a large class of heuristics from the MVP.
 
+### 11. Curated in-app model provisioning
+
+Do not bundle inference models with the application. On first launch, present a short curated list of supported transcription models as cards showing name, download size, speed/quality guidance, and source. Each card supports Download, visible progress, Cancel, Select, and selected-state feedback. Download directly over HTTPS into an application-managed models directory under Application Support, validate available disk space before starting, and select a model after a successful download. Settings exposes the same model list plus an Open Models Folder action; a dedicated model-deletion UI is out of scope for v1.
+
+A valid transcription model is required to finish onboarding and start a meeting. Provisioning the larger note-generation model is deferred until the user first requests generated notes, using the same download interaction. Model provisioning may use the network, but model inference and all meeting-content processing remain local after provisioning.
+
+**Rationale:** This gives users a Mac-native setup flow without requiring Terminal or manual file placement, keeps the application download small, and avoids forcing a multi-gigabyte generation-model download before the transcription workflow is usable.
+
 ## Data Flow
 
 ### During a meeting
@@ -353,6 +361,8 @@ Test at minimum:
 - Zoom/Meet/Teams call while using Mac speakers.
 - Same workflow while using AirPods or another headphone device.
 - Permission-denied first run.
+- First launch with no models installed, including download progress, cancellation, selection, and insufficient-disk behavior.
+- First note-generation request with no generation model installed.
 - Change audio output device before a meeting and confirm system audio remains capturable.
 - Kill/relaunch app after transcript segments have persisted and confirm recovery of stored meeting data.
 
@@ -363,7 +373,7 @@ Test at minimum:
 - **[System-audio API behavior can vary across macOS releases/devices]** -> isolate ScreenCaptureKit behind a capture adapter and maintain manual hardware/output-device acceptance tests.
 - **[No raw-audio persistence limits recovery from failed chunks]** -> prioritize privacy; persist finalized text aggressively and clearly expose incomplete transcription when inference fails.
 - **[Long transcripts can exceed local LLM context limits]** -> generation service SHALL prepare input using deterministic chunking/condensation when necessary while preserving user notes and the final note schema; keep this logic behind the generation service so it can evolve independently.
-- **[Local models consume substantial disk/RAM]** -> validate model compatibility before meetings and surface understandable configuration errors instead of failing after capture starts.
+- **[Local models consume substantial disk/RAM]** -> show download size and performance guidance, validate available disk space and model compatibility, and surface understandable configuration errors before capture or generation starts.
 - **[Model output can hallucinate]** -> use explicit grounding instructions, stable section schema, preserve source transcript for review, and never treat generated notes as authoritative source data.
 
 ## Migration Plan

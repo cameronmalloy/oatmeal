@@ -44,6 +44,12 @@ Normal meeting operation SHALL NOT depend on network availability after compatib
 - **THEN** local audio capture and local transcription can continue
 - **AND** post-meeting local note generation remains available
 
+#### Scenario: Download a model before local processing
+- **GIVEN** a required model is not installed
+- **WHEN** the user explicitly starts an in-app model download
+- **THEN** the network request retrieves only the selected model artifact from its disclosed source
+- **AND** no meeting audio, transcript, user note, generated note, or model prompt is transmitted with that request
+
 ### Requirement: Explicit deletion removes meeting content from application storage
 
 When a user deletes a meeting, the system SHALL remove the meeting's persisted transcript, user notes, generated notes, and associated metadata from the application's managed storage.

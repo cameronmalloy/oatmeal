@@ -68,3 +68,20 @@ The system SHALL detect when no usable local transcription model is configured a
 - **WHEN** the user attempts to start a meeting
 - **THEN** the system reports that a local transcription model is required
 - **AND** the system does not present empty transcription as successful transcription
+
+### Requirement: In-app transcription-model provisioning
+
+The system SHALL let the user download and select a supported transcription model in the application without requiring Terminal or manual file placement.
+
+#### Scenario: Provision a model during onboarding
+- **GIVEN** no compatible transcription model is installed
+- **WHEN** the user opens model setup
+- **THEN** the system presents a curated model list with name, download size, speed/quality guidance, and source
+- **AND** the user can download a model with visible progress and a Cancel action
+- **AND** a successful download is stored in the application's Application Support directory and selected for transcription
+
+#### Scenario: Insufficient disk space
+- **GIVEN** the Mac lacks enough free space for the selected model and a safety margin
+- **WHEN** the user attempts to download it
+- **THEN** the system does not start the download
+- **AND** the system displays an actionable storage error

@@ -59,6 +59,13 @@ The system SHALL allow note generation to use a locally available compatible mod
 - **THEN** the next generation uses the newly selected local model
 - **AND** existing transcript and user-note source data remain unchanged
 
+#### Scenario: First generation without a model
+- **GIVEN** no compatible note-generation model is installed
+- **WHEN** the user first requests generated notes
+- **THEN** the system presents supported local models with name, download size, performance guidance, and source
+- **AND** the user can download a model with visible progress and a Cancel action
+- **AND** generation remains unavailable until a compatible model is successfully installed and selected
+
 ### Requirement: Recoverable generation failure
 
 A note-generation failure MUST NOT delete or corrupt the meeting transcript, user notes, or the last successfully generated notes.
