@@ -1,0 +1,15 @@
+schema: spec-driven
+
+context: |
+  Oatmeal is a native Swift/SwiftUI meeting assistant for macOS 14+ on Apple Silicon.
+  Meeting audio, transcripts, user notes, prompts, and generated notes stay on the Mac.
+  Transcription uses whisper.cpp and note generation uses llama.cpp after models are provisioned in-app.
+  Raw meeting audio is ephemeral and is not persisted by default.
+  Tests use deterministic, non-sensitive fixtures and must cover offline operation and failure recovery.
+
+rules:
+  specs:
+    - Use Given/When/Then scenarios with observable outcomes.
+    - State privacy and data-retention behavior explicitly at trust boundaries.
+  tasks:
+    - Include a runnable verification for each implementation task.
