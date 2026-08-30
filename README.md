@@ -8,6 +8,7 @@ After the first GitHub release is published:
 
 ```sh
 brew tap cameronmalloy/oatmeal https://github.com/cameronmalloy/oatmeal
+brew trust cameronmalloy/oatmeal
 brew install --cask oatmeal
 ```
 
