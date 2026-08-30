@@ -185,7 +185,8 @@ public struct WhisperProcessEngine: TranscriptionEngine {
 
         let process = Process()
         process.executableURL = executableURL
-        process.arguments = ["-m", modelURL.path, "-f", wavURL.path, "-nt", "-np"]
+        // ponytail: Homebrew's Metal backend can crash during allocation; CPU remains faster than realtime for the curated models.
+        process.arguments = ["--no-gpu", "-m", modelURL.path, "-f", wavURL.path, "-nt", "-np"]
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output

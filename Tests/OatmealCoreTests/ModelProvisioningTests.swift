@@ -6,7 +6,7 @@ final class ModelProvisioningTests: XCTestCase {
         let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         XCTAssertThrowsError(try ModelValidator.validate(url: missing, kind: .transcription, minimumBytes: 16))
 
-        let tiny = try temporaryFile(Data("ggml".utf8))
+        let tiny = try temporaryFile(Data("lmgg".utf8))
         XCTAssertThrowsError(try ModelValidator.validate(url: tiny, kind: .transcription, minimumBytes: 16))
 
         let wrongFormat = try temporaryFile(Data(repeating: 1, count: 16))
@@ -14,7 +14,7 @@ final class ModelProvisioningTests: XCTestCase {
     }
 
     func testValidatorAcceptsExpectedLocalModelMagic() throws {
-        let whisper = try temporaryFile(Data("ggml".utf8) + Data(repeating: 0, count: 12))
+        let whisper = try temporaryFile(Data("lmgg".utf8) + Data(repeating: 0, count: 12))
         let gguf = try temporaryFile(Data("GGUF".utf8) + Data(repeating: 0, count: 12))
 
         XCTAssertNoThrow(try ModelValidator.validate(url: whisper, kind: .transcription, minimumBytes: 16))

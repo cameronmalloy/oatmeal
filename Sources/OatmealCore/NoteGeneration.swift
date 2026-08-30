@@ -155,9 +155,9 @@ public struct LlamaProcessEngine: NoteGenerationEngine {
             "-c", String(contextLimit),
             "-n", String(min(1_024, max(256, contextLimit / 4))),
             "--temp", "0.2",
-            "-no-cnv",
+            "--single-turn",
+            "--simple-io",
             "--no-display-prompt",
-            "--no-show-timings",
         ]
         let output = Pipe()
         let errors = Pipe()
@@ -184,7 +184,8 @@ public struct LlamaProcessEngine: NoteGenerationEngine {
                     if process.terminationStatus == 0 {
                         continuation.resume(returning: String(data: captured.value, encoding: .utf8) ?? "")
                     } else {
-                        let message = String(data: capturedErrors.value, encoding: .utf8) ?? "exit \(process.terminationStatus)"
+                        let details = String(data: capturedErrors.value, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let message = details.flatMap { $0.isEmpty ? nil : $0 } ?? "exit \(process.terminationStatus)"
                         continuation.resume(throwing: RuntimeError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
                     }
                 }
@@ -197,10 +198,13 @@ public struct LlamaProcessEngine: NoteGenerationEngine {
     }
 
     public static func bundled(modelURL: URL, bundle: Bundle = .main) throws -> LlamaProcessEngine {
+        if let executable = RuntimeLocator.executable(named: "llama-completion", bundle: bundle) {
+            return .init(executableURL: executable, modelURL: modelURL)
+        }
         if let executable = RuntimeLocator.executable(named: "llama-cli", bundle: bundle) {
             return .init(executableURL: executable, modelURL: modelURL)
         }
         guard let executable = RuntimeLocator.executable(named: "llama", bundle: bundle) else { throw RuntimeError.missingExecutable }
-        return .init(executableURL: executable, modelURL: modelURL, argumentPrefix: ["--run-legacy"])
+        return .init(executableURL: executable, modelURL: modelURL, argumentPrefix: ["cli"])
     }
 }

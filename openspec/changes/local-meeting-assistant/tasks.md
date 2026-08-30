@@ -25,7 +25,7 @@
 ## 4. Local Transcription
 
 - [x] 4.1 Define the runtime-independent `TranscriptionEngine` adapter contract and model-validation result types, and verify coordinator tests can run with a fake engine.
-- [ ] 4.2 Integrate `whisper.cpp` as the initial local transcription adapter and verify a known speech fixture produces non-empty local transcript output with networking disabled.
+- [x] 4.2 Integrate `whisper.cpp` as the initial local transcription adapter and verify a known speech fixture produces non-empty local transcript output with networking disabled.
 - [x] 4.3 Implement per-source bounded buffering/window assembly and timestamp propagation, and verify a multi-minute synthetic fixture does not cause unbounded queue/memory growth.
 - [x] 4.4 Implement incremental partial/final result handling while persisting only finalized transcript segments, and verify partial replacements do not create duplicate durable transcript rows.
 - [x] 4.5 Map microphone results to `Me` and system-audio results to `Others`, and verify source-label unit/integration tests for both streams.
@@ -45,7 +45,7 @@
 ## 6. Local Note Generation
 
 - [x] 6.1 Define the runtime-independent `NoteGenerationEngine` contract and compatible-model validation behavior, and verify generation-service tests use a fake engine without concrete llama.cpp dependencies.
-- [ ] 6.2 Integrate `llama.cpp` for compatible local GGUF models and verify an offline local inference smoke test returns generated text from a known small fixture/model configuration.
+- [x] 6.2 Integrate `llama.cpp` for compatible local GGUF models and verify an offline local inference smoke test returns generated text from a known small fixture/model configuration.
 - [x] 6.3 Implement deferred in-app note-generation model provisioning with the same download behavior, and verify the first generation request can download/select a compatible model while changed selection is used on the next request without changing meeting source data.
 - [x] 6.4 Implement versioned prompt assembly from meeting metadata, ordered finalized transcript, and timestamped user notes, and verify prompt tests include both source types with explicit `Me`/`Others` attribution.
 - [x] 6.5 Implement required structured Markdown output sections (Summary, Decisions, Action Items, Open Questions, Important Context), and verify generated-output validation detects missing top-level sections.
@@ -79,4 +79,4 @@
 - [ ] 9.5 Perform manual acceptance testing with AirPods or another headphone output device, and record that remote system audio is transcribed without requiring acoustic microphone pickup.
 - [ ] 9.6 Perform manual permission-denied/recovery acceptance tests for microphone and system-audio capture, and verify the app provides actionable recovery rather than silent partial capture.
 - [ ] 9.7 Perform an offline end-to-end meeting test after models are provisioned, and verify Start -> transcript -> Stop -> generate -> reopen history succeeds without network connectivity.
-- [ ] 9.8 Run the full automated test suite and a release-build smoke test, and verify all tests pass and the application launches with no unresolved blocking warnings/errors.
+- [x] 9.8 Run the full automated test suite and a release-build smoke test, and verify all tests pass and the application launches with no unresolved blocking warnings/errors.

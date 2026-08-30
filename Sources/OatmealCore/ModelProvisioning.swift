@@ -108,7 +108,7 @@ public enum ModelValidator {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         let magic = try handle.read(upToCount: 4) ?? Data()
-        let expected = Data((kind == .transcription ? "ggml" : "GGUF").utf8)
+        let expected = kind == .transcription ? Data("lmgg".utf8) : Data("GGUF".utf8)
         guard magic == expected else { throw ValidationError.incompatible }
     }
 }

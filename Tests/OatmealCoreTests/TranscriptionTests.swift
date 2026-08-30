@@ -85,10 +85,11 @@ final class TranscriptionTests: XCTestCase {
     func testWhisperProcessDeletesTemporaryAudioAfterTranscription() async throws {
         let directory = try temporaryDirectory()
         let executable = directory.appendingPathComponent("whisper-cli")
-        try Data("#!/bin/sh\nprintf 'hello'\n".utf8).write(to: executable)
+        let script = "#!/bin/sh\ncase \" $* \" in *\" --no-gpu \"*) printf hello ;; *) exit 2 ;; esac\n"
+        try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
         let model = directory.appendingPathComponent("model.bin")
-        var modelData = Data("ggml".utf8)
+        var modelData = Data("lmgg".utf8)
         modelData.append(Data(count: 1_000_000))
         try modelData.write(to: model)
         let engine = WhisperProcessEngine(executableURL: executable, modelURL: model, temporaryDirectory: directory)
@@ -97,6 +98,31 @@ final class TranscriptionTests: XCTestCase {
 
         XCTAssertEqual(text, "hello")
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".wav") }.isEmpty)
+    }
+
+    func testRealWhisperFixtureWhenConfigured() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let modelPath = environment["OATMEAL_REAL_WHISPER_MODEL"],
+              let audioPath = environment["OATMEAL_REAL_WHISPER_AUDIO"]
+        else { throw XCTSkip("Set real Whisper model and audio paths to run local inference.") }
+        let audio = try Data(contentsOf: URL(fileURLWithPath: audioPath))
+        let samples = stride(from: 44, to: audio.count - 1, by: 2).map { index in
+            Float(Int16(bitPattern: UInt16(audio[index]) | UInt16(audio[index + 1]) << 8)) / 32_768
+        }
+        let engine = WhisperProcessEngine(
+            executableURL: URL(fileURLWithPath: "/opt/homebrew/bin/whisper-cli"),
+            modelURL: URL(fileURLWithPath: modelPath)
+        )
+
+        let transcript = try await engine.transcribe(.init(
+            source: .system,
+            startMS: 0,
+            sampleRate: 16_000,
+            channels: 1,
+            samples: samples
+        ))
+
+        XCTAssertTrue(transcript.lowercased().contains("fellow americans"))
     }
 
     private func databaseURL() throws -> URL {

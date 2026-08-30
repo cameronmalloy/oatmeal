@@ -98,20 +98,45 @@ final class NoteGenerationTests: XCTestCase {
         XCTAssertGreaterThan(output.count, 90_000)
     }
 
-    func testLlamaProcessSupportsHomebrewDispatcherPrefix() async throws {
+    func testLlamaProcessUsesNonInteractiveChatArguments() async throws {
         let directory = try temporaryDirectory()
-        let executable = directory.appendingPathComponent("llama")
-        let script = "#!/bin/sh\ntest \"$1\" = --run-legacy || exit 2\nprintf ok\n"
+        let executable = directory.appendingPathComponent("llama-completion")
+        let script = """
+            #!/bin/sh
+            case " $* " in *" --single-turn "*) ;; *) exit 2 ;; esac
+            case " $* " in *" --simple-io "*) ;; *) exit 3 ;; esac
+            case " $* " in *" -no-cnv "*) exit 4 ;; esac
+            printf ok
+            """
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
         let model = directory.appendingPathComponent("model.gguf")
         var modelData = Data("GGUF".utf8)
         modelData.append(Data(count: 1_000_000))
         try modelData.write(to: model)
-        let engine = LlamaProcessEngine(executableURL: executable, modelURL: model, argumentPrefix: ["--run-legacy"])
+        let engine = LlamaProcessEngine(executableURL: executable, modelURL: model)
 
         let output = try await engine.generate(prompt: "local", contextLimit: 2_000)
         XCTAssertEqual(output, "ok")
+    }
+
+    func testRealLlamaNotesWhenConfigured() async throws {
+        guard let modelPath = ProcessInfo.processInfo.environment["OATMEAL_REAL_LLAMA_MODEL"]
+        else { throw XCTSkip("Set a real GGUF model path to run local note generation.") }
+        let store = try MeetingStore(url: try databaseURL())
+        let meeting = Meeting(id: fixedID, title: "Release planning", transcript: [
+            .init(meetingID: fixedID, source: .me, startMS: 0, endMS: 1_000, text: "We decided to ship Friday."),
+            .init(meetingID: fixedID, source: .others, startMS: 1_000, endMS: 2_000, text: "Cameron will prepare the release notes."),
+        ])
+        try store.saveMeeting(meeting)
+        for segment in meeting.transcript { try store.saveSegment(segment) }
+        let engine = try LlamaProcessEngine.bundled(modelURL: URL(fileURLWithPath: modelPath))
+        let service = NoteGenerationService(engine: engine, store: store, modelIdentifier: "real", contextLimit: 2_048)
+
+        let note = try await service.generate(meetingID: meeting.id)
+
+        XCTAssertNoThrow(try GeneratedNoteValidator.validate(note.content))
+        XCTAssertEqual(try store.meeting(id: meeting.id)?.generatedNotes.count, 1)
     }
 
     private var fixedID: UUID { UUID(uuidString: "00000000-0000-0000-0000-000000000001")! }
