@@ -1,0 +1,158 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA0000000000000000000001 /* OatmealApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000011 /* OatmealApp.swift */; };
+		AA0000000000000000000002 /* OatmealCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000041 /* OatmealCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA0000000000000000000010 /* Oatmeal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Oatmeal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000011 /* OatmealApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OatmealApp.swift; sourceTree = "<group>"; };
+		AA0000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA0000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (AA0000000000000000000002 /* OatmealCore in Frameworks */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA0000000000000000000030 = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000031 /* OatmealApp */,
+				AA0000000000000000000032 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000031 /* OatmealApp */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000011 /* OatmealApp.swift */,
+				AA0000000000000000000012 /* Info.plist */,
+			);
+			name = OatmealApp;
+			path = Sources/OatmealApp;
+			sourceTree = SOURCE_ROOT;
+		};
+		AA0000000000000000000032 /* Products */ = {
+			isa = PBXGroup;
+			children = (AA0000000000000000000010 /* Oatmeal.app */);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA0000000000000000000050 /* Oatmeal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000071 /* Build configuration list for PBXNativeTarget "Oatmeal" */;
+			buildPhases = (
+				AA0000000000000000000060 /* Sources */,
+				AA0000000000000000000020 /* Frameworks */,
+				AA0000000000000000000061 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = Oatmeal;
+			packageProductDependencies = (AA0000000000000000000041 /* OatmealCore */);
+			productName = Oatmeal;
+			productReference = AA0000000000000000000010 /* Oatmeal.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA0000000000000000000051 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = { AA0000000000000000000050 = { CreatedOnToolsVersion = 15.4; }; };
+			};
+			buildConfigurationList = AA0000000000000000000070 /* Build configuration list for PBXProject "Oatmeal" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = AA0000000000000000000030;
+			packageReferences = (AA0000000000000000000040 /* XCLocalSwiftPackageReference "." */);
+			productRefGroup = AA0000000000000000000032 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (AA0000000000000000000050 /* Oatmeal */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA0000000000000000000061 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA0000000000000000000060 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (AA0000000000000000000001 /* OatmealApp.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000080 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; name = Debug; };
+		AA0000000000000000000081 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 5.0; }; name = Release; };
+		AA0000000000000000000082 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = Sources/OatmealApp/Oatmeal.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/OatmealApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cameronmalloy.oatmeal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AA0000000000000000000083 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = Sources/OatmealApp/Oatmeal.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/OatmealApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cameronmalloy.oatmeal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA0000000000000000000070 /* Build configuration list for PBXProject "Oatmeal" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000080, AA0000000000000000000081); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AA0000000000000000000071 /* Build configuration list for PBXNativeTarget "Oatmeal" */ = {isa = XCConfigurationList; buildConfigurations = (AA0000000000000000000082, AA0000000000000000000083); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AA0000000000000000000040 /* XCLocalSwiftPackageReference "." */ = {isa = XCLocalSwiftPackageReference; relativePath = "."; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA0000000000000000000041 /* OatmealCore */ = {isa = XCSwiftPackageProductDependency; productName = OatmealCore; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AA0000000000000000000051 /* Project object */;
+}
