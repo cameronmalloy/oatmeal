@@ -67,6 +67,21 @@ final class MeetingStoreTests: XCTestCase {
         XCTAssertEqual(try MeetingStore(url: url).modelConfiguration(), configuration)
     }
 
+    func testEditingUserNoteKeepsItsMeetingTimestamp() throws {
+        let store = try MeetingStore(url: try databaseURL())
+        let meeting = Meeting()
+        try store.saveMeeting(meeting)
+        var note = UserNote(meetingID: meeting.id, meetingTimeMS: 42, text: "Draft")
+        try store.saveUserNote(note)
+
+        note.text = "Edited"
+        note.updatedAt = Date()
+        try store.saveUserNote(note)
+
+        XCTAssertEqual(try store.meeting(id: meeting.id)?.userNotes.map(\.text), ["Edited"])
+        XCTAssertEqual(try store.meeting(id: meeting.id)?.userNotes.first?.meetingTimeMS, 42)
+    }
+
     private func databaseURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

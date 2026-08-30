@@ -3,10 +3,12 @@ import SwiftUI
 
 @main
 struct OatmealApp: App {
+    @StateObject private var model = AppModel()
+
     var body: some Scene {
         WindowGroup {
-            Text("Oatmeal")
-                .frame(minWidth: 900, minHeight: 600)
+            ContentView(model: model)
         }
+        .defaultSize(width: 1_080, height: 720)
     }
 }

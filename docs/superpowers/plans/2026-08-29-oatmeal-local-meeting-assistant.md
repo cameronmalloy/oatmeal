@@ -462,3 +462,54 @@ Run on a signed macOS 14+ app: grant/deny microphone and Screen Recording permis
 git add Tests docs/privacy.md openspec/changes/local-meeting-assistant/tasks.md
 git commit -m "test: verify Oatmeal privacy and acceptance"
 ```
+
+### Task 10: Homebrew cask and signed DMG release packaging
+
+**Files:**
+- Create: `scripts/release.sh`
+- Create: `Casks/oatmeal.rb`
+- Create: `.github/workflows/release.yml`
+- Test: `Tests/release-smoke.sh`
+
+**Interfaces:**
+- Consumes: the verified Release application target and optional Apple signing/notarization credentials.
+- Produces: `Oatmeal.dmg`, its SHA-256 digest, a GitHub release asset, and a Homebrew cask for Apple Silicon macOS 14+.
+
+- [ ] **Step 1: Write a failing release smoke script**
+
+```bash
+test -f Oatmeal.dmg
+hdiutil verify Oatmeal.dmg
+codesign --verify --deep --strict "$mounted_app"
+brew style Casks/oatmeal.rb
+```
+
+- [ ] **Step 2: Verify RED**
+
+Run: `bash Tests/release-smoke.sh`
+Expected: FAIL because the DMG and cask do not exist.
+
+- [ ] **Step 3: Add one release script that archives arm64, signs when `DEVELOPER_ID_APPLICATION` is set, notarizes when the notary environment is set, creates a read-only DMG, and prints its SHA-256**
+
+```bash
+xcodebuild archive -project Oatmeal.xcodeproj -scheme Oatmeal -archivePath "$archive_path" -destination 'generic/platform=macOS'
+hdiutil create -volname Oatmeal -srcfolder "$staging_path" -ov -format UDZO Oatmeal.dmg
+shasum -a 256 Oatmeal.dmg
+```
+
+- [ ] **Step 4: Add `Casks/oatmeal.rb` for `https://github.com/cameronmalloy/oatmeal/releases/download/v#{version}/Oatmeal.dmg` and a tag-driven GitHub release workflow**
+
+```ruby
+cask "oatmeal" do
+  version "0.1.0"
+  url "https://github.com/cameronmalloy/oatmeal/releases/download/v#{version}/Oatmeal.dmg"
+  depends_on macos: ">= :sonoma"
+  depends_on arch: :arm64
+  app "Oatmeal.app"
+end
+```
+
+- [ ] **Step 5: Verify release packaging locally**
+
+Run: `bash scripts/release.sh 0.1.0 && bash Tests/release-smoke.sh`
+Expected: unsigned local DMG verifies and installs; signed CI releases additionally pass Gatekeeper/notarization checks.

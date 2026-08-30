@@ -7,7 +7,11 @@
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
-   <TestAction buildConfiguration="Debug" shouldUseLaunchSchemeArgsEnv="YES"><Testables/></TestAction>
+   <TestAction buildConfiguration="Debug" shouldUseLaunchSchemeArgsEnv="YES">
+      <Testables>
+         <TestableReference skipped="NO" parallelizable="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="AA0000000000000000000052" BuildableName="OatmealUITests.xctest" BlueprintName="OatmealUITests" ReferencedContainer="container:Oatmeal.xcodeproj"/></TestableReference>
+      </Testables>
+   </TestAction>
    <LaunchAction buildConfiguration="Debug" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
       <BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="AA0000000000000000000050" BuildableName="Oatmeal.app" BlueprintName="Oatmeal" ReferencedContainer="container:Oatmeal.xcodeproj"/></BuildableProductRunnable>
    </LaunchAction>
