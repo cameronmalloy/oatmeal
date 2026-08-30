@@ -11,7 +11,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "OatmealCore"),
-        .executableTarget(name: "OatmealApp", dependencies: ["OatmealCore"]),
+        .executableTarget(
+            name: "OatmealApp",
+            dependencies: ["OatmealCore"],
+            exclude: ["Info.plist", "Oatmeal.entitlements"]
+        ),
         .testTarget(name: "OatmealCoreTests", dependencies: ["OatmealCore"]),
     ]
 )
