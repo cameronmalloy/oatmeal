@@ -22,14 +22,44 @@ final class ModelProvisioningTests: XCTestCase {
     }
 
     func testCatalogDisclosesHTTPSModelSourcesAndUsefulChoices() {
-        XCTAssertGreaterThanOrEqual(ModelCatalog.transcription.count, 2)
-        XCTAssertGreaterThanOrEqual(ModelCatalog.generation.count, 2)
+        XCTAssertEqual(Set(ModelCatalog.transcription.map(\.id)), [
+            "whisper-tiny-en",
+            "whisper-base-en",
+            "whisper-base-multilingual",
+            "whisper-small-en",
+            "whisper-medium-en-q5",
+            "whisper-large-v3-turbo-q5",
+        ])
+        XCTAssertEqual(Set(ModelCatalog.generation.map(\.id)), [
+            "qwen2.5-1.5b-instruct-q4km",
+            "granite-3.3-2b-instruct-q4km",
+            "qwen3-4b-instruct-2507-q8",
+            "granite-3.3-8b-instruct-q4km",
+        ])
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: (ModelCatalog.transcription + ModelCatalog.generation).map { ($0.id, $0.bytes) }), [
+            "whisper-tiny-en": 77_704_715,
+            "whisper-base-en": 147_964_211,
+            "whisper-base-multilingual": 147_951_465,
+            "whisper-small-en": 487_614_201,
+            "whisper-medium-en-q5": 539_225_533,
+            "whisper-large-v3-turbo-q5": 574_041_195,
+            "qwen2.5-1.5b-instruct-q4km": 1_117_320_736,
+            "granite-3.3-2b-instruct-q4km": 1_545_303_328,
+            "qwen3-4b-instruct-2507-q8": 4_280_403_520,
+            "granite-3.3-8b-instruct-q4km": 4_942_873_344,
+        ])
         XCTAssertTrue((ModelCatalog.transcription + ModelCatalog.generation).allSatisfy {
             $0.sourceURL.scheme == "https" &&
+            $0.sourceURL.host == "huggingface.co" &&
+            $0.sourceURL.path.contains("/resolve/") &&
+            $0.sourceURL.lastPathComponent == $0.filename &&
             $0.sourceURL.query == nil &&
             $0.bytes > 0 &&
-            !$0.guidance.isEmpty
+            !$0.guidance.isEmpty &&
+            ($0.sourceName.contains("MIT") || $0.sourceName.contains("Apache 2.0"))
         })
+        XCTAssertTrue(ModelCatalog.transcription.allSatisfy { $0.kind == .transcription })
+        XCTAssertTrue(ModelCatalog.generation.allSatisfy { $0.kind == .generation })
     }
 
     func testCapacityPreflightIncludesSafetyMargin() {

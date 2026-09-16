@@ -91,6 +91,15 @@ private struct ActiveMeetingView: View {
             }
             .padding()
 
+            if let backlogStatus = model.backlogStatus {
+                Label(backlogStatus, systemImage: "exclamationmark.triangle.fill")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("transcription-backlog-status")
+            }
+
             Divider()
             TranscriptView(meeting: model.selectedMeeting, partials: model.partialTranscript)
             Divider()

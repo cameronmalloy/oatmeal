@@ -9,11 +9,16 @@ extension DualCaptureCoordinator: MeetingCapturing {}
 
 public protocol MeetingTranscribing: Sendable {
     func validateModel() async throws
+    func hasActivity(_ chunk: CapturedAudioChunk) -> Bool
     func transcribe(
         _ chunk: CapturedAudioChunk,
         meetingID: UUID,
         partial: @escaping @Sendable (String) -> Void
-    ) async throws -> TranscriptSegment
+    ) async throws -> TranscriptSegment?
+}
+
+public extension MeetingTranscribing {
+    func hasActivity(_ chunk: CapturedAudioChunk) -> Bool { true }
 }
 
 extension TranscriptionCoordinator: MeetingTranscribing {}
@@ -24,12 +29,63 @@ public protocol MeetingNoteGenerating: Sendable {
 
 extension NoteGenerationService: MeetingNoteGenerating {}
 
+final class DurationBoundedAudioIngress: @unchecked Sendable {
+    struct Drain {
+        let chunks: [CapturedAudioChunk]
+        let droppedCount: Int
+    }
+
+    private let maximumAudioMSPerSource: Int64
+    private let lock = NSLock()
+    private var chunks: [CapturedAudioChunk] = []
+    private var durationMS: [AudioSource: Int64] = [:]
+    private var droppedCount = 0
+
+    init(maximumAudioMSPerSource: Int64) {
+        self.maximumAudioMSPerSource = max(1, maximumAudioMSPerSource)
+    }
+
+    func append(_ chunk: CapturedAudioChunk) {
+        lock.withLock {
+            let incomingDuration = max(1, chunk.durationMS)
+            var sourceDuration = durationMS[chunk.source, default: 0]
+            while sourceDuration + incomingDuration > maximumAudioMSPerSource,
+                  let index = chunks.firstIndex(where: { $0.source == chunk.source }) {
+                sourceDuration -= max(1, chunks.remove(at: index).durationMS)
+                droppedCount += 1
+            }
+            guard sourceDuration + incomingDuration <= maximumAudioMSPerSource else {
+                droppedCount += 1
+                return
+            }
+            chunks.append(chunk)
+            durationMS[chunk.source] = sourceDuration + incomingDuration
+        }
+    }
+
+    func drain() -> Drain {
+        lock.withLock {
+            defer {
+                chunks.removeAll(keepingCapacity: true)
+                durationMS.removeAll(keepingCapacity: true)
+                droppedCount = 0
+            }
+            return Drain(chunks: chunks, droppedCount: droppedCount)
+        }
+    }
+}
+
 public struct MeetingWorkflowSnapshot: Equatable, Sendable {
     public let status: MeetingStatus
     public let activeMeetingID: UUID?
     public let partialTranscript: [AudioSource: String]
     public let visibleError: String?
     public let droppedAudioChunks: Int
+
+    public var backlogStatus: String? {
+        guard status == .degraded, visibleError == nil, droppedAudioChunks > 0 else { return nil }
+        return "Transcription is behind; \(droppedAudioChunks) unprocessed audio chunk\(droppedAudioChunks == 1 ? " was" : "s were") dropped."
+    }
 }
 
 public actor MeetingWorkflow {
@@ -57,15 +113,20 @@ public actor MeetingWorkflow {
     private let generator: (any MeetingNoteGenerating)?
     private let permissions: @Sendable () async -> CapturePermissionStatus
     private let windowAssembler: AudioWindowAssembler
+    private let maximumQueuedAudioMSPerSource: Int64
     private let clock: CaptureClock
     private let onUpdate: @Sendable () -> Void
     private var lifecycle = MeetingLifecycle()
-    private var continuation: AsyncStream<CapturedAudioChunk>.Continuation?
+    private var continuation: AsyncStream<Void>.Continuation?
     private var processor: Task<Void, Never>?
+    private var workers: [AudioSource: Task<Void, Never>] = [:]
+    private var queuedWindows: [AudioSource: [CapturedAudioChunk]] = [:]
+    private var queuedAudioMS: [AudioSource: Int64] = [:]
     private var activeMeetingID: UUID?
     private var partialTranscript: [AudioSource: String] = [:]
     private var visibleError: String?
     private var droppedAudioChunks = 0
+    private var overloadActive = false
 
     public init(
         store: MeetingStore,
@@ -74,6 +135,7 @@ public actor MeetingWorkflow {
         generator: (any MeetingNoteGenerating)?,
         permissions: @escaping @Sendable () async -> CapturePermissionStatus,
         windowAssembler: AudioWindowAssembler = .init(),
+        maximumQueuedAudioMSPerSource: Int64 = 60_000,
         clock: CaptureClock = .init(),
         onUpdate: @escaping @Sendable () -> Void = {}
     ) {
@@ -83,6 +145,7 @@ public actor MeetingWorkflow {
         self.generator = generator
         self.permissions = permissions
         self.windowAssembler = windowAssembler
+        self.maximumQueuedAudioMSPerSource = max(1, maximumQueuedAudioMSPerSource)
         self.clock = clock
         self.onUpdate = onUpdate
     }
@@ -117,14 +180,19 @@ public actor MeetingWorkflow {
         activeMeetingID = meeting.id
         visibleError = nil
         partialTranscript.removeAll()
+        droppedAudioChunks = 0
+        overloadActive = false
+        queuedWindows.removeAll(keepingCapacity: true)
+        queuedAudioMS.removeAll(keepingCapacity: true)
 
-        let pair = AsyncStream<CapturedAudioChunk>.makeStream(bufferingPolicy: .bufferingNewest(120))
+        let ingress = DurationBoundedAudioIngress(maximumAudioMSPerSource: maximumQueuedAudioMSPerSource)
+        let pair = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
         continuation = pair.continuation
-        processor = Task { await consume(pair.stream, meetingID: meeting.id) }
+        processor = Task { await consume(pair.stream, ingress: ingress, meetingID: meeting.id) }
         do {
-            try await capture.start { [self] chunk in
-                let result = pair.continuation.yield(chunk)
-                if case .dropped = result { Task { await self.markBacklog() } }
+            try await capture.start { chunk in
+                ingress.append(chunk)
+                pair.continuation.yield(())
             }
             try lifecycle.transition(to: .capturing)
             meeting.status = .capturing
@@ -132,8 +200,19 @@ public actor MeetingWorkflow {
             onUpdate()
             return meeting.id
         } catch {
+            await capture.stop()
             pair.continuation.finish()
             _ = await processor?.value
+            await windowAssembler.discard()
+            await waitForWorkers()
+            workers.removeAll(keepingCapacity: true)
+            queuedWindows.removeAll(keepingCapacity: true)
+            queuedAudioMS.removeAll(keepingCapacity: true)
+            processor = nil
+            continuation = nil
+            activeMeetingID = nil
+            partialTranscript.removeAll()
+            overloadActive = false
             try? lifecycle.transition(to: .failed)
             meeting.status = .failed
             try? store.saveMeeting(meeting)
@@ -144,16 +223,21 @@ public actor MeetingWorkflow {
     }
 
     public func stop() async throws {
+        if lifecycle.status == .stopping { return }
         guard let meetingID = activeMeetingID, var meeting = try store.meeting(id: meetingID) else { throw WorkflowError.noActiveMeeting }
         try lifecycle.transition(to: .stopping)
         meeting.status = .stopping
         try store.saveMeeting(meeting)
+        onUpdate()
         await capture.stop()
         continuation?.finish()
         _ = await processor?.value
         processor = nil
         continuation = nil
-        for chunk in await windowAssembler.flush() { await transcribe(chunk, meetingID: meetingID) }
+        for chunk in await windowAssembler.flush() where transcriber.hasActivity(chunk) {
+            enqueue(chunk, meetingID: meetingID)
+        }
+        await waitForWorkers()
         if lifecycle.status == .degraded { try lifecycle.transition(to: .stopping) }
         try lifecycle.transition(to: .finalizing)
         meeting.status = .finalizing
@@ -209,16 +293,82 @@ public actor MeetingWorkflow {
         onUpdate()
     }
 
-    private func consume(_ stream: AsyncStream<CapturedAudioChunk>, meetingID: UUID) async {
-        for await chunk in stream {
-            for window in await windowAssembler.append(chunk) { await transcribe(window, meetingID: meetingID) }
+    private func consume(_ stream: AsyncStream<Void>, ingress: DurationBoundedAudioIngress, meetingID: UUID) async {
+        for await _ in stream {
+            await consume(ingress.drain(), meetingID: meetingID)
+        }
+        await consume(ingress.drain(), meetingID: meetingID)
+    }
+
+    private func consume(_ drain: DurationBoundedAudioIngress.Drain, meetingID: UUID) async {
+        if drain.droppedCount > 0 { markBacklog(drain.droppedCount) }
+        for chunk in drain.chunks {
+            for window in await windowAssembler.append(chunk) where transcriber.hasActivity(window) {
+                enqueue(window, meetingID: meetingID)
+            }
+        }
+    }
+
+    private func enqueue(_ chunk: CapturedAudioChunk, meetingID: UUID) {
+        let duration = max(1, chunk.durationMS)
+        var queue = queuedWindows[chunk.source, default: []]
+        var queuedDuration = queuedAudioMS[chunk.source, default: 0]
+        while queuedDuration + duration > maximumQueuedAudioMSPerSource, let dropped = queue.first {
+            queue.removeFirst()
+            queuedDuration -= max(1, dropped.durationMS)
+            markBacklog()
+        }
+        guard queuedDuration + duration <= maximumQueuedAudioMSPerSource else {
+            markBacklog()
+            return
+        }
+        queue.append(chunk)
+        queuedWindows[chunk.source] = queue
+        queuedAudioMS[chunk.source] = queuedDuration + duration
+        if workers[chunk.source] == nil {
+            workers[chunk.source] = Task { await self.runWorker(source: chunk.source, meetingID: meetingID) }
+        }
+    }
+
+    private func runWorker(source: AudioSource, meetingID: UUID) async {
+        while let chunk = dequeue(source: source) {
+            await transcribe(chunk, meetingID: meetingID)
+            finish(chunk, meetingID: meetingID)
+        }
+        workers[source] = nil
+    }
+
+    private func dequeue(source: AudioSource) -> CapturedAudioChunk? {
+        guard var queue = queuedWindows[source], !queue.isEmpty else { return nil }
+        let chunk = queue.removeFirst()
+        queuedWindows[source] = queue
+        return chunk
+    }
+
+    private func finish(_ chunk: CapturedAudioChunk, meetingID: UUID) {
+        queuedAudioMS[chunk.source, default: 0] -= max(1, chunk.durationMS)
+        let recoveryThreshold = maximumQueuedAudioMSPerSource / 2
+        guard overloadActive, AudioSource.allCases.allSatisfy({ queuedAudioMS[$0, default: 0] <= recoveryThreshold }) else { return }
+        overloadActive = false
+        guard visibleError == nil, lifecycle.status == .degraded else { return }
+        try? lifecycle.transition(to: .capturing)
+        if var meeting = try? store.meeting(id: meetingID) {
+            meeting.status = .capturing
+            try? store.saveMeeting(meeting)
+        }
+        onUpdate()
+    }
+
+    private func waitForWorkers() async {
+        while !workers.isEmpty {
+            for worker in Array(workers.values) { await worker.value }
         }
     }
 
     private func transcribe(_ chunk: CapturedAudioChunk, meetingID: UUID) async {
         do {
             _ = try await transcriber.transcribe(chunk, meetingID: meetingID) { [self] text in
-                Task { await self.setPartial(text, source: chunk.source) }
+                Task { await self.setPartial(text, source: chunk.source, meetingID: meetingID) }
             }
             partialTranscript[chunk.source] = nil
             onUpdate()
@@ -233,14 +383,19 @@ public actor MeetingWorkflow {
         }
     }
 
-    private func setPartial(_ text: String, source: AudioSource) {
+    private func setPartial(_ text: String, source: AudioSource, meetingID: UUID) {
+        guard activeMeetingID == meetingID else { return }
         partialTranscript[source] = text
         onUpdate()
     }
 
-    private func markBacklog() {
-        droppedAudioChunks += 1
-        visibleError = "Transcription is behind; the oldest unprocessed audio chunk was dropped."
+    private func markBacklog(_ count: Int = 1) {
+        droppedAudioChunks += count
+        guard !overloadActive else {
+            onUpdate()
+            return
+        }
+        overloadActive = true
         if lifecycle.status == .capturing { try? lifecycle.transition(to: .degraded) }
         if let activeMeetingID, var meeting = try? store.meeting(id: activeMeetingID) {
             meeting.status = .degraded

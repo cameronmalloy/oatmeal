@@ -84,6 +84,10 @@ public actor AudioWindowAssembler {
             return CapturedAudioChunk(source: source, startMS: value.startMS, sampleRate: 16_000, channels: 1, samples: value.samples)
         }
     }
+
+    public func discard() {
+        pending.removeAll(keepingCapacity: true)
+    }
 }
 
 public protocol TranscriptionEngine: Sendable {
@@ -111,11 +115,13 @@ public actor TranscriptionCoordinator {
 
     private let engine: any TranscriptionEngine
     private let store: MeetingStore
+    private let activityThreshold: Float
     public private(set) var status: TranscriptionStatus = .ready
 
-    public init(engine: any TranscriptionEngine, store: MeetingStore) {
+    public init(engine: any TranscriptionEngine, store: MeetingStore, activityThreshold: Float = 0.01) {
         self.engine = engine
         self.store = store
+        self.activityThreshold = max(0, activityThreshold)
     }
 
     public func validateModel() async throws {
@@ -127,7 +133,8 @@ public actor TranscriptionCoordinator {
         _ chunk: CapturedAudioChunk,
         meetingID: UUID,
         partial: @escaping @Sendable (String) -> Void = { _ in }
-    ) async throws -> TranscriptSegment {
+    ) async throws -> TranscriptSegment? {
+        guard hasActivity(chunk) else { return nil }
         status = .transcribing
         do {
             let text = try await engine.transcribe(chunk, partial: partial).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,6 +152,15 @@ public actor TranscriptionCoordinator {
         } catch {
             status = .degraded(error.localizedDescription)
             throw error
+        }
+    }
+
+    public nonisolated func hasActivity(_ chunk: CapturedAudioChunk) -> Bool {
+        let frameSamples = max(1, Int((chunk.sampleRate * 0.02).rounded()) * max(1, chunk.channels))
+        return stride(from: 0, to: chunk.samples.count, by: frameSamples).contains { start in
+            let frame = chunk.samples[start..<min(start + frameSamples, chunk.samples.count)]
+            let energy = frame.reduce(Float.zero) { $0 + $1 * $1 } / Float(frame.count)
+            return sqrt(energy) > activityThreshold
         }
     }
 }

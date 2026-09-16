@@ -2,7 +2,7 @@ import XCTest
 @testable import OatmealCore
 
 final class NoteGenerationTests: XCTestCase {
-    func testPromptKeepsUserNotesLabelsAndGroundingRules() throws {
+    func testPromptKeepsSourcesAndRequiresGroundedConciseFormat() throws {
         let meeting = Meeting(
             title: "Planning",
             transcript: [
@@ -17,8 +17,31 @@ final class NoteGenerationTests: XCTestCase {
         XCTAssertTrue(prompt.contains("[00:01] Me: Ship it"))
         XCTAssertTrue(prompt.contains("[00:03] Others: Sounds good"))
         XCTAssertTrue(prompt.contains("[00:02] USER NOTE: Important"))
-        XCTAssertTrue(prompt.contains("Do not invent owners, dates, due dates, or decisions"))
-        XCTAssertFalse(prompt.contains("Due date:"))
+        XCTAssertTrue(prompt.contains("Do not invent facts, owners, due dates, action items, or decisions"))
+        XCTAssertTrue(prompt.contains("**Owner:** Name or Unassigned | **Due:** Date or No due date stated | Action"))
+        XCTAssertTrue(prompt.contains("one concise paragraph of no more than three sentences"))
+        XCTAssertEqual(PromptBuilder.version, "oatmeal-notes-v2")
+
+        let actionItems = try XCTUnwrap(prompt.range(of: "# Action Items"))
+        let decisions = try XCTUnwrap(prompt.range(of: "# Decisions"))
+        let summary = try XCTUnwrap(prompt.range(of: "# Meeting Summary"))
+        XCTAssertLessThan(actionItems.lowerBound, decisions.lowerBound)
+        XCTAssertLessThan(decisions.lowerBound, summary.lowerBound)
+    }
+
+    func testPromptListsOneSummaryBulletPerStartedThirtyMinuteInterval() throws {
+        let meeting = Meeting(transcript: [
+            .init(meetingID: fixedID, source: .me, startMS: 0, endMS: 1_000, text: "First"),
+            .init(meetingID: fixedID, source: .others, startMS: 1_799_999, endMS: 1_800_001, text: "Second"),
+            .init(meetingID: fixedID, source: .me, startMS: 3_599_999, endMS: 3_600_001, text: "Third"),
+        ])
+
+        let prompt = try PromptBuilder.build(meeting: meeting, contextLimit: 2_000)
+
+        XCTAssertTrue(prompt.contains("- **00:00–30:00:**"))
+        XCTAssertTrue(prompt.contains("- **30:00–60:00:**"))
+        XCTAssertTrue(prompt.contains("- **60:00–90:00:**"))
+        XCTAssertFalse(prompt.contains("- **90:00–120:00:**"))
     }
 
     func testPromptStaysWithinBudgetAndAlwaysRetainsUserNotes() throws {
@@ -42,20 +65,38 @@ final class NoteGenerationTests: XCTestCase {
 
     func testGeneratedOutputRequiresEveryTopLevelSection() {
         let complete = """
-            # Summary
-            Done
-            # Decisions
-            None
             # Action Items
-            None
-            # Open Questions
-            None
-            # Important Context
-            None
+            - None identified.
+            # Decisions
+            - None identified.
+            # Meeting Summary
+            - **00:00–30:00:** Done.
             """
 
         XCTAssertNoThrow(try GeneratedNoteValidator.validate(complete))
+        XCTAssertThrowsError(try GeneratedNoteValidator.validate("Here are your notes:\n" + complete))
         XCTAssertThrowsError(try GeneratedNoteValidator.validate(complete.replacingOccurrences(of: "# Decisions", with: "Decisions")))
+        XCTAssertThrowsError(try GeneratedNoteValidator.validate(complete.replacingOccurrences(
+            of: "# Action Items\n- None identified.\n# Decisions",
+            with: "# Decisions\n- None identified.\n# Action Items"
+        )))
+        XCTAssertThrowsError(try GeneratedNoteValidator.validate(complete + "\n# Extra\nNo"))
+    }
+
+    func testGenerationUses32KContextByDefault() async throws {
+        let store = try MeetingStore(url: try databaseURL())
+        let meeting = Meeting(id: fixedID, transcript: [
+            .init(meetingID: fixedID, source: .me, startMS: 0, endMS: 1, text: "Source"),
+        ])
+        try store.saveMeeting(meeting)
+        try store.saveSegment(meeting.transcript[0])
+        let engine = ContextRecordingNoteEngine()
+        let service = NoteGenerationService(engine: engine, store: store, modelIdentifier: "fixture")
+
+        _ = try await service.generate(meetingID: meeting.id)
+
+        let receivedContextLimit = await engine.receivedContextLimit
+        XCTAssertEqual(receivedContextLimit, 32_768)
     }
 
     func testFailedRegenerationPreservesSourcesAndLastSuccessfulNote() async throws {
@@ -64,7 +105,7 @@ final class NoteGenerationTests: XCTestCase {
         try store.saveMeeting(meeting)
         try store.saveSegment(meeting.transcript[0])
         try store.saveUserNote(.init(meetingID: meeting.id, meetingTimeMS: 1, text: "User source"))
-        let success = "# Summary\nS\n# Decisions\nNone\n# Action Items\nNone\n# Open Questions\nNone\n# Important Context\nNone"
+        let success = "# Action Items\n- None identified.\n# Decisions\n- None identified.\n# Meeting Summary\n- **00:00–30:00:** Source."
         let engine = FixtureNoteEngine(results: [.success(success), .failure(FixtureGenerationError.failed)])
         let service = NoteGenerationService(engine: engine, store: store, modelIdentifier: "fixture", contextLimit: 2_000)
 
@@ -160,4 +201,15 @@ private actor FixtureNoteEngine: NoteGenerationEngine {
     init(results: [Result<String, Error>]) { self.results = results }
     func validateModel() async throws {}
     func generate(prompt: String, contextLimit: Int) async throws -> String { try results.removeFirst().get() }
+}
+
+private actor ContextRecordingNoteEngine: NoteGenerationEngine {
+    private(set) var receivedContextLimit: Int?
+
+    func validateModel() async throws {}
+
+    func generate(prompt: String, contextLimit: Int) async throws -> String {
+        receivedContextLimit = contextLimit
+        return "# Action Items\n- None identified.\n# Decisions\n- None identified.\n# Meeting Summary\n- **00:00–30:00:** Source."
+    }
 }

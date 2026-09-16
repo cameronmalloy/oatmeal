@@ -13,7 +13,7 @@ public enum PromptBuilder {
         }
     }
 
-    public static let version = "oatmeal-notes-v1"
+    public static let version = "oatmeal-notes-v2"
 
     public static func build(meeting: Meeting, contextLimit: Int) throws -> String {
         let transcript = meeting.transcript.filter { $0.state == .final }.sorted { $0.startMS < $1.startMS }
@@ -22,15 +22,24 @@ public enum PromptBuilder {
         let reservedOutputTokens = min(1_024, max(1, contextLimit / 4))
         let maximumCharacters = max(1, contextLimit - reservedOutputTokens) * 4
         let noteLines = notes.map { "[\(timestamp($0.meetingTimeMS))] USER NOTE: \($0.text)" }.joined(separator: "\n")
+        let meetingDurationMS = max(1, transcript.map(\.endMS).max() ?? 1)
+        let intervalCount = Int((meetingDurationMS - 1) / 1_800_000) + 1
+        let summaryLines = (0..<intervalCount).map {
+            "- **\(String(format: "%02d:00", $0 * 30))–\(String(format: "%02d:00", ($0 + 1) * 30)):**"
+        }.joined(separator: "\n")
         let header = """
             You are Oatmeal, a local meeting-notes assistant. Use only the source material below.
-            Do not invent owners, dates, due dates, or decisions. If a section has no supported content, write "None identified."
-            Return Markdown with exactly these top-level headings, in this order:
-            # Summary
-            # Decisions
+            Do not invent facts, owners, due dates, action items, or decisions.
+            Return Markdown with exactly these top-level headings in this order and no others:
             # Action Items
-            # Open Questions
-            # Important Context
+            - **Owner:** Name or Unassigned | **Due:** Date or No due date stated | Action
+            Use "- None identified." when there are no supported action items.
+            # Decisions
+            - Decision supported by the source material
+            Use "- None identified." when there are no supported decisions.
+            # Meeting Summary
+            Use exactly the interval bullets below. Each must be one concise paragraph of no more than three sentences and cover only its interval:
+            \(summaryLines)
 
             Meeting: \(meeting.title)
             Started: \(ISO8601DateFormatter().string(from: meeting.startedAt))
@@ -55,23 +64,29 @@ public enum PromptBuilder {
 public enum GeneratedNoteValidator {
     public enum ValidationError: LocalizedError, Equatable {
         case missingSection(String)
+        case invalidStructure
         public var errorDescription: String? {
-            switch self { case let .missingSection(section): "Generated notes are missing \(section)." }
+            switch self {
+            case let .missingSection(section): "Generated notes are missing \(section)."
+            case .invalidStructure: "Generated notes must contain only Action Items, Decisions, and Meeting Summary in that order."
+            }
         }
     }
 
     public static let requiredHeadings = [
-        "# Summary",
-        "# Decisions",
         "# Action Items",
-        "# Open Questions",
-        "# Important Context",
+        "# Decisions",
+        "# Meeting Summary",
     ]
 
     public static func validate(_ content: String) throws {
-        let lines = Set(content.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) })
-        for heading in requiredHeadings where !lines.contains(heading) {
+        let lines = content.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
+        let headings = lines.filter { $0.hasPrefix("# ") }
+        for heading in requiredHeadings where !headings.contains(heading) {
             throw ValidationError.missingSection(heading)
+        }
+        guard lines.first(where: { !$0.isEmpty }) == requiredHeadings[0], headings == requiredHeadings else {
+            throw ValidationError.invalidStructure
         }
     }
 }
@@ -92,7 +107,7 @@ public actor NoteGenerationService {
     private let modelIdentifier: String
     private let contextLimit: Int
 
-    public init(engine: any NoteGenerationEngine, store: MeetingStore, modelIdentifier: String, contextLimit: Int = 8_192) {
+    public init(engine: any NoteGenerationEngine, store: MeetingStore, modelIdentifier: String, contextLimit: Int = 32_768) {
         self.engine = engine
         self.store = store
         self.modelIdentifier = modelIdentifier

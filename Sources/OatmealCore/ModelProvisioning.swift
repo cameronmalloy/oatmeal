@@ -40,24 +40,64 @@ public struct ModelDescriptor: Identifiable, Equatable, Sendable {
 public enum ModelCatalog {
     public static let transcription: [ModelDescriptor] = [
         .init(
+            id: "whisper-tiny-en",
+            name: "Whisper Tiny English",
+            kind: .transcription,
+            filename: "ggml-tiny.en.bin",
+            bytes: 77_704_715,
+            guidance: "Fastest English option with the lowest accuracy and memory use.",
+            sourceName: "whisper.cpp · MIT · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin")!
+        ),
+        .init(
             id: "whisper-base-en",
             name: "Whisper Base English",
             kind: .transcription,
             filename: "ggml-base.en.bin",
-            bytes: 148_897_792,
-            guidance: "Fastest recommended option for English meetings.",
-            sourceName: "whisper.cpp on Hugging Face",
+            bytes: 147_964_211,
+            guidance: "Fast recommended option for English meetings.",
+            sourceName: "whisper.cpp · MIT · Hugging Face",
             sourceURL: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin")!
+        ),
+        .init(
+            id: "whisper-base-multilingual",
+            name: "Whisper Base Multilingual",
+            kind: .transcription,
+            filename: "ggml-base.bin",
+            bytes: 147_951_465,
+            guidance: "Compact option for meetings that may not be in English.",
+            sourceName: "whisper.cpp · MIT · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin")!
         ),
         .init(
             id: "whisper-small-en",
             name: "Whisper Small English",
             kind: .transcription,
             filename: "ggml-small.en.bin",
-            bytes: 488_000_000,
+            bytes: 487_614_201,
             guidance: "Better accuracy with higher memory use and latency.",
-            sourceName: "whisper.cpp on Hugging Face",
+            sourceName: "whisper.cpp · MIT · Hugging Face",
             sourceURL: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin")!
+        ),
+        .init(
+            id: "whisper-medium-en-q5",
+            name: "Whisper Medium English Q5",
+            kind: .transcription,
+            filename: "ggml-medium.en-q5_0.bin",
+            bytes: 539_225_533,
+            guidance: "Higher-capacity English option; slower but quantized to reduce disk and memory use.",
+            sourceName: "whisper.cpp · MIT · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-q5_0.bin")!
+        ),
+        .init(
+            id: "whisper-large-v3-turbo-q5",
+            name: "Whisper Large v3 Turbo Q5",
+            kind: .transcription,
+            filename: "ggml-large-v3-turbo-q5_0.bin",
+            bytes: 574_041_195,
+            guidance: "Highest-quality multilingual option; expect the most transcription latency.",
+            sourceName: "whisper.cpp · MIT · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin")!
         ),
     ]
 
@@ -67,20 +107,40 @@ public enum ModelCatalog {
             name: "Qwen 2.5 1.5B Instruct",
             kind: .generation,
             filename: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-            bytes: 1_120_000_000,
+            bytes: 1_117_320_736,
             guidance: "Fast and compact; suitable for Macs with 8 GB memory.",
-            sourceName: "Qwen on Hugging Face",
+            sourceName: "Qwen · Apache 2.0 · Hugging Face",
             sourceURL: URL(string: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf")!
         ),
         .init(
-            id: "qwen2.5-3b-instruct-q4km",
-            name: "Qwen 2.5 3B Instruct",
+            id: "granite-3.3-2b-instruct-q4km",
+            name: "Granite 3.3 2B Instruct",
             kind: .generation,
-            filename: "qwen2.5-3b-instruct-q4_k_m.gguf",
-            bytes: 2_100_000_000,
-            guidance: "Higher-quality notes; recommended for Macs with 16 GB memory.",
-            sourceName: "Qwen on Hugging Face",
-            sourceURL: URL(string: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf")!
+            filename: "granite-3.3-2b-instruct-Q4_K_M.gguf",
+            bytes: 1_545_303_328,
+            guidance: "Compact model tuned for long-document and meeting summarization.",
+            sourceName: "IBM Granite · Apache 2.0 · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ibm-granite/granite-3.3-2b-instruct-GGUF/resolve/main/granite-3.3-2b-instruct-Q4_K_M.gguf")!
+        ),
+        .init(
+            id: "qwen3-4b-instruct-2507-q8",
+            name: "Qwen3 4B Instruct 2507",
+            kind: .generation,
+            filename: "qwen3-4b-instruct-2507-q8_0.gguf",
+            bytes: 4_280_403_520,
+            guidance: "Stronger non-thinking model with good instruction following; recommended for Macs with 16 GB memory.",
+            sourceName: "ggml-org/Qwen · Apache 2.0 · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ggml-org/Qwen3-4B-Instruct-2507-Q8_0-GGUF/resolve/main/qwen3-4b-instruct-2507-q8_0.gguf")!
+        ),
+        .init(
+            id: "granite-3.3-8b-instruct-q4km",
+            name: "Granite 3.3 8B Instruct",
+            kind: .generation,
+            filename: "granite-3.3-8b-instruct-Q4_K_M.gguf",
+            bytes: 4_942_873_344,
+            guidance: "Highest-quality summarization option; recommended for Macs with at least 16 GB memory.",
+            sourceName: "IBM Granite · Apache 2.0 · Hugging Face",
+            sourceURL: URL(string: "https://huggingface.co/ibm-granite/granite-3.3-8b-instruct-GGUF/resolve/main/granite-3.3-8b-instruct-Q4_K_M.gguf")!
         ),
     ]
 }

@@ -11,16 +11,19 @@ final class AppModel: ObservableObject {
     @Published var workflowStatus: MeetingStatus = .idle
     @Published var partialTranscript: [AudioSource: String] = [:]
     @Published var visibleError: String?
+    @Published var backlogStatus: String?
     @Published var noteDraft = ""
     @Published var downloadProgress = 0.0
     @Published var downloadingModelID: String?
     @Published var modelSetupKind: ModelKind?
 
     private let store: MeetingStore
+    private let usesBacklogUITestFixture: Bool
     private var workflow: MeetingWorkflow?
     private var downloadTask: Task<Void, Never>?
 
     init() {
+        usesBacklogUITestFixture = ProcessInfo.processInfo.arguments.contains("--ui-testing-backlog")
         do {
             let url: URL
             if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
@@ -30,6 +33,10 @@ final class AppModel: ObservableObject {
             }
             store = try MeetingStore(url: url)
             configureWorkflow()
+            if usesBacklogUITestFixture {
+                workflowStatus = .degraded
+                backlogStatus = "Transcription is behind; 3 unprocessed audio chunks were dropped."
+            }
             Task {
                 try? await workflow?.recoverInterruptedMeetings()
                 reloadHistory()
@@ -40,7 +47,7 @@ final class AppModel: ObservableObject {
     }
 
     var configuration: ModelConfiguration { (try? store.modelConfiguration()) ?? .init() }
-    var hasTranscriptionModel: Bool { configuration.transcriptionModelPath != nil }
+    var hasTranscriptionModel: Bool { usesBacklogUITestFixture || configuration.transcriptionModelPath != nil }
     var hasGenerationModel: Bool { configuration.generationModelPath != nil }
 
     func reloadHistory(select id: UUID? = nil) {
@@ -74,6 +81,11 @@ final class AppModel: ObservableObject {
     }
 
     func stopMeeting() {
+        if usesBacklogUITestFixture {
+            workflowStatus = .completed
+            backlogStatus = nil
+            return
+        }
         Task {
             do {
                 try await workflow?.stop()
@@ -234,6 +246,7 @@ final class AppModel: ObservableObject {
         guard let snapshot = await workflow?.snapshot() else { return }
         workflowStatus = snapshot.status
         partialTranscript = snapshot.partialTranscript
+        backlogStatus = snapshot.backlogStatus
         if let error = snapshot.visibleError { visibleError = error }
         reloadHistory(select: snapshot.activeMeetingID ?? selectedMeetingID)
     }

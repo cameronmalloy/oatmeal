@@ -37,16 +37,68 @@ final class TranscriptionTests: XCTestCase {
         let partials = StringCollector()
 
         let segment = try await coordinator.transcribe(
-            .init(source: .microphone, startMS: 1, sampleRate: 16_000, channels: 1, samples: [0]),
+            .init(source: .microphone, startMS: 1, sampleRate: 16_000, channels: 1, samples: [0.1]),
             meetingID: meeting.id,
             partial: { text in Task { await partials.append(text) } }
         )
         try await Task.sleep(nanoseconds: 10_000_000)
 
         let displayedPartials = await partials.values
-        XCTAssertEqual(segment.source, .me)
+        XCTAssertEqual(segment?.source, .me)
         XCTAssertEqual(displayedPartials, ["hel"])
         XCTAssertEqual(try store.meeting(id: meeting.id)?.transcript.map(\.text), ["hello"])
+    }
+
+    func testCoordinatorIgnoresSilenceAndLowSteadyNoiseFromBothSources() async throws {
+        let store = try MeetingStore(url: try databaseURL())
+        let meeting = Meeting(status: .capturing)
+        try store.saveMeeting(meeting)
+        let engine = FixtureTranscriptionEngine(results: [0: .success("hallucination"), 40: .success("hallucination")])
+        let coordinator = TranscriptionCoordinator(engine: engine, store: store)
+        let partials = StringCollector()
+
+        let silence: TranscriptSegment? = try await coordinator.transcribe(
+            CapturedAudioChunk(source: .microphone, startMS: 0, sampleRate: 16_000, channels: 1, samples: Array(repeating: 0, count: 640)),
+            meetingID: meeting.id,
+            partial: { text in Task { await partials.append(text) } }
+        )
+        let noise: TranscriptSegment? = try await coordinator.transcribe(
+            CapturedAudioChunk(source: .system, startMS: 40, sampleRate: 16_000, channels: 1, samples: Array(repeating: 0.001, count: 640)),
+            meetingID: meeting.id,
+            partial: { text in Task { await partials.append(text) } }
+        )
+        let callCount = await engine.callCount
+        let displayedPartials = await partials.values
+        let status = await coordinator.status
+
+        XCTAssertNil(silence)
+        XCTAssertNil(noise)
+        XCTAssertEqual(callCount, 0)
+        XCTAssertEqual(displayedPartials, [])
+        XCTAssertEqual(try store.meeting(id: meeting.id)?.transcript, [])
+        XCTAssertEqual(status, .ready)
+    }
+
+    func testCoordinatorTranscribesQuietSpeechAfterSilence() async throws {
+        let store = try MeetingStore(url: try databaseURL())
+        let meeting = Meeting(status: .capturing)
+        try store.saveMeeting(meeting)
+        let engine = FixtureTranscriptionEngine(results: [0: .success("Quiet speech")])
+        let coordinator = TranscriptionCoordinator(engine: engine, store: store)
+        let samples = Array(repeating: Float.zero, count: 320) + (0..<320).map { index in
+            Float(sin(Double(index) * .pi / 8)) * 0.02
+        }
+
+        let segment: TranscriptSegment? = try await coordinator.transcribe(
+            CapturedAudioChunk(source: .microphone, startMS: 0, sampleRate: 16_000, channels: 1, samples: samples),
+            meetingID: meeting.id
+        )
+        let callCount = await engine.callCount
+
+        XCTAssertEqual(segment?.text, "Quiet speech")
+        XCTAssertEqual(segment?.source, .me)
+        XCTAssertEqual(callCount, 1)
+        XCTAssertEqual(try store.meeting(id: meeting.id)?.transcript.map(\.text), ["Quiet speech"])
     }
 
     func testOutOfOrderInferenceCompletionReadsInMeetingTimeOrder() async throws {
@@ -139,7 +191,7 @@ final class TranscriptionTests: XCTestCase {
 
 private extension CapturedAudioChunk {
     static func fixture(source: AudioSource, startMS: Int64) -> Self {
-        .init(source: source, startMS: startMS, sampleRate: 16_000, channels: 1, samples: [0])
+        .init(source: source, startMS: startMS, sampleRate: 16_000, channels: 1, samples: [0.1])
     }
 }
 
@@ -149,6 +201,7 @@ private actor FixtureTranscriptionEngine: TranscriptionEngine {
     let results: [Int64: Result<String, Error>]
     let partials: [Int64: String]
     let delays: [Int64: UInt64]
+    private(set) var callCount = 0
 
     init(results: [Int64: Result<String, Error>], partials: [Int64: String] = [:], delays: [Int64: UInt64] = [:]) {
         self.results = results
@@ -159,6 +212,7 @@ private actor FixtureTranscriptionEngine: TranscriptionEngine {
     func validateModel() async throws {}
 
     func transcribe(_ chunk: CapturedAudioChunk, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        callCount += 1
         if let text = partials[chunk.startMS] { partial(text) }
         if let delay = delays[chunk.startMS] { try await Task.sleep(nanoseconds: delay) }
         return try results[chunk.startMS]!.get()
