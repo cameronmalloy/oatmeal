@@ -134,47 +134,157 @@ final class TranscriptionTests: XCTestCase {
         }
     }
 
-    func testWhisperProcessDeletesTemporaryAudioAfterTranscription() async throws {
-        let directory = try temporaryDirectory()
-        let executable = directory.appendingPathComponent("whisper-cli")
-        let script = "#!/bin/sh\ncase \" $* \" in *\" --no-gpu \"*) printf hello ;; *) exit 2 ;; esac\n"
-        try Data(script.utf8).write(to: executable)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
-        let model = directory.appendingPathComponent("model.bin")
-        var modelData = Data("lmgg".utf8)
-        modelData.append(Data(count: 1_000_000))
-        try modelData.write(to: model)
-        let engine = WhisperProcessEngine(executableURL: executable, modelURL: model, temporaryDirectory: directory)
+    func testServerEngineStartsEachSourceRuntimeOnceAndReusesItAcrossWindows() async throws {
+        let launcher = FakeWhisperRuntimeLauncher()
+        let engine = WhisperServerEngine(modelURL: try modelFile(), launch: { source, url in try launcher.launch(source, url) })
 
-        let text = try await engine.transcribe(.fixture(source: .microphone, startMS: 0))
+        try await engine.validateModel()
+        _ = try await engine.transcribe(.fixture(source: .microphone, startMS: 0), partial: { _ in })
+        _ = try await engine.transcribe(.fixture(source: .microphone, startMS: 1), partial: { _ in })
+        _ = try await engine.transcribe(.fixture(source: .system, startMS: 0), partial: { _ in })
+        try await engine.validateModel() // a second meeting starting with the same model
 
-        XCTAssertEqual(text, "hello")
-        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".wav") }.isEmpty)
+        XCTAssertEqual(launcher.launches, [.microphone, .system])
     }
 
-    func testRealWhisperFixtureWhenConfigured() async throws {
-        let environment = ProcessInfo.processInfo.environment
-        guard let modelPath = environment["OATMEAL_REAL_WHISPER_MODEL"],
-              let audioPath = environment["OATMEAL_REAL_WHISPER_AUDIO"]
-        else { throw XCTSkip("Set real Whisper model and audio paths to run local inference.") }
-        let audio = try Data(contentsOf: URL(fileURLWithPath: audioPath))
-        let samples = stride(from: 44, to: audio.count - 1, by: 2).map { index in
-            Float(Int16(bitPattern: UInt16(audio[index]) | UInt16(audio[index + 1]) << 8)) / 32_768
+    func testServerEngineRoutesEachSourceToItsOwnRuntime() async throws {
+        let launcher = FakeWhisperRuntimeLauncher()
+        let engine = WhisperServerEngine(modelURL: try modelFile(), launch: { source, url in try launcher.launch(source, url) })
+        try await engine.validateModel()
+
+        let microphoneText = try await engine.transcribe(.fixture(source: .microphone, startMS: 0), partial: { _ in })
+        let systemText = try await engine.transcribe(.fixture(source: .system, startMS: 0), partial: { _ in })
+
+        XCTAssertEqual(microphoneText, "microphone-1")
+        XCTAssertEqual(systemText, "system-1")
+    }
+
+    func testServerEngineSharesInFlightPreparationAcrossConcurrentCallers() async throws {
+        let launcher = FakeWhisperRuntimeLauncher()
+        launcher.setReadyDelay(nanoseconds: 100_000_000)
+        let engine = WhisperServerEngine(modelURL: try modelFile(), launch: { source, url in try launcher.launch(source, url) })
+
+        async let first: String = engine.transcribe(.fixture(source: .microphone, startMS: 0), partial: { _ in })
+        async let second: String = engine.transcribe(.fixture(source: .microphone, startMS: 1), partial: { _ in })
+        _ = try await (first, second)
+
+        XCTAssertEqual(launcher.launches, [.microphone])
+    }
+
+    func testServerProcessArgumentsBindOnlyToLoopback() {
+        let arguments = ProcessWhisperRuntime.serverArguments(modelPath: "/models/small.bin", port: 4_123)
+
+        XCTAssertEqual(arguments, ["--no-gpu", "-m", "/models/small.bin", "--host", "127.0.0.1", "--port", "4123"])
+    }
+
+    func testServerEngineSurfacesStartupFailureAndRetriesOnNextPreparation() async throws {
+        let launcher = FakeWhisperRuntimeLauncher()
+        launcher.setReadyError(FixtureError.failed)
+        let engine = WhisperServerEngine(modelURL: try modelFile(), launch: { source, url in try launcher.launch(source, url) })
+
+        do {
+            try await engine.validateModel()
+            XCTFail("Expected startup failure")
+        } catch {}
+        XCTAssertEqual(launcher.launchCount, 2)
+
+        launcher.setReadyError(nil)
+        try await engine.validateModel()
+        XCTAssertEqual(launcher.launchCount, 4)
+    }
+
+    func testServerEngineCancellationStopsRequestWithoutStoppingRuntime() async throws {
+        let launcher = FakeWhisperRuntimeLauncher()
+        let engine = WhisperServerEngine(modelURL: try modelFile(), launch: { source, url in try launcher.launch(source, url) })
+        try await engine.validateModel()
+
+        let task = Task { try await engine.transcribe(.fixture(source: .microphone, startMS: 0), partial: { _ in }) }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+        } catch { XCTFail("Expected CancellationError, got \(error)") }
+
+        let runtime = try XCTUnwrap(launcher.runtimes[.microphone])
+        XCTAssertTrue(runtime.isRunning)
+        XCTAssertFalse(runtime.terminated)
+    }
+
+    func testServerEngineShutdownTerminatesAllRuntimes() async throws {
+        let launcher = FakeWhisperRuntimeLauncher()
+        let engine = WhisperServerEngine(modelURL: try modelFile(), launch: { source, url in try launcher.launch(source, url) })
+        try await engine.validateModel()
+
+        engine.shutdown()
+
+        for source in AudioSource.allCases {
+            let runtime = try XCTUnwrap(launcher.runtimes[source])
+            XCTAssertTrue(runtime.terminated)
         }
-        let engine = WhisperProcessEngine(
-            executableURL: URL(fileURLWithPath: "/opt/homebrew/bin/whisper-cli"),
-            modelURL: URL(fileURLWithPath: modelPath)
-        )
+    }
+
+    func testRealWhisperServerFixtureWhenConfigured() async throws {
+        guard let modelPath = ProcessInfo.processInfo.environment["OATMEAL_REAL_WHISPER_MODEL"]
+        else { throw XCTSkip("Set a real Whisper model path to run local inference.") }
+        let audio = try realFixtureAudio()
+        let engine = try WhisperServerEngine.bundled(modelURL: URL(fileURLWithPath: modelPath))
+        addTeardownBlock { engine.shutdown() }
 
         let transcript = try await engine.transcribe(.init(
             source: .system,
             startMS: 0,
             sampleRate: 16_000,
             channels: 1,
-            samples: samples
+            samples: audio
         ))
 
         XCTAssertTrue(transcript.lowercased().contains("fellow americans"))
+    }
+
+    func testRealWhisperServerLatencyWhenConfigured() async throws {
+        guard let modelPath = ProcessInfo.processInfo.environment["OATMEAL_REAL_WHISPER_LATENCY_MODEL"]
+        else { throw XCTSkip("Set a real curated Whisper model path to measure warm-runtime latency.") }
+        let audio = try realFixtureAudio()
+        let engine = try WhisperServerEngine.bundled(modelURL: URL(fileURLWithPath: modelPath))
+        addTeardownBlock { engine.shutdown() }
+        try await engine.validateModel()
+
+        let firstWindowStart = Date()
+        _ = try await engine.transcribe(.init(source: .microphone, startMS: 0, sampleRate: 16_000, channels: 1, samples: audio), partial: { _ in })
+        XCTAssertLessThan(Date().timeIntervalSince(firstWindowStart), 5)
+
+        let concurrentStart = Date()
+        async let microphone: String = engine.transcribe(
+            .init(source: .microphone, startMS: 5_000, sampleRate: 16_000, channels: 1, samples: audio),
+            partial: { _ in }
+        )
+        async let system: String = engine.transcribe(
+            .init(source: .system, startMS: 5_000, sampleRate: 16_000, channels: 1, samples: audio),
+            partial: { _ in }
+        )
+        _ = try await (microphone, system)
+        XCTAssertLessThan(Date().timeIntervalSince(concurrentStart), 5)
+    }
+
+    private func realFixtureAudio() throws -> [Float] {
+        guard let audioPath = ProcessInfo.processInfo.environment["OATMEAL_REAL_WHISPER_AUDIO"]
+        else { throw XCTSkip("Set a real Whisper audio fixture path to run local inference.") }
+        let audio = try Data(contentsOf: URL(fileURLWithPath: audioPath))
+        return stride(from: 44, to: audio.count - 1, by: 2).map { index in
+            Float(Int16(bitPattern: UInt16(audio[index]) | UInt16(audio[index + 1]) << 8)) / 32_768
+        }
+    }
+
+    private func modelFile() throws -> URL {
+        let directory = try temporaryDirectory()
+        let model = directory.appendingPathComponent("model.bin")
+        var modelData = Data("lmgg".utf8)
+        modelData.append(Data(count: 1_000_000))
+        try modelData.write(to: model)
+        return model
     }
 
     private func databaseURL() throws -> URL {
@@ -222,4 +332,74 @@ private actor FixtureTranscriptionEngine: TranscriptionEngine {
 private actor StringCollector {
     private(set) var values: [String] = []
     func append(_ value: String) { values.append(value) }
+}
+
+private final class FakeWhisperRuntimeLauncher: @unchecked Sendable {
+    private let lock = NSLock()
+    private var launchList: [AudioSource] = []
+    private var runtimeMap: [AudioSource: FakeWhisperRuntime] = [:]
+    private var readyError: Error?
+    private var readyDelayNanoseconds: UInt64 = 0
+
+    var launches: [AudioSource] { lock.withLock { launchList } }
+    var launchCount: Int { lock.withLock { launchList.count } }
+    var runtimes: [AudioSource: FakeWhisperRuntime] { lock.withLock { runtimeMap } }
+
+    func setReadyError(_ error: Error?) { lock.withLock { readyError = error } }
+    func setReadyDelay(nanoseconds: UInt64) { lock.withLock { readyDelayNanoseconds = nanoseconds } }
+
+    func launch(_ source: AudioSource, _ modelURL: URL) throws -> any WhisperRuntimeProcess {
+        let error = lock.withLock { readyError }
+        let delay = lock.withLock { readyDelayNanoseconds }
+        let runtime = FakeWhisperRuntime(source: source, readyError: error, readyDelayNanoseconds: delay)
+        lock.withLock {
+            launchList.append(source)
+            runtimeMap[source] = runtime
+        }
+        return runtime
+    }
+}
+
+private final class FakeWhisperRuntime: WhisperRuntimeProcess, @unchecked Sendable {
+    private let lock = NSLock()
+    private var running = true
+    private var terminatedFlag = false
+    private var inferCallCount = 0
+    private let source: AudioSource
+    private let readyError: Error?
+    private let readyDelayNanoseconds: UInt64
+
+    init(source: AudioSource, readyError: Error?, readyDelayNanoseconds: UInt64 = 0) {
+        self.source = source
+        self.readyError = readyError
+        self.readyDelayNanoseconds = readyDelayNanoseconds
+    }
+
+    var isRunning: Bool { lock.withLock { running } }
+    var terminated: Bool { lock.withLock { terminatedFlag } }
+
+    func waitUntilReady(timeout: TimeInterval) async throws {
+        if readyDelayNanoseconds > 0 { try await Task.sleep(nanoseconds: readyDelayNanoseconds) }
+        if let readyError {
+            lock.withLock { running = false }
+            throw readyError
+        }
+    }
+
+    func infer(wav: Data) async throws -> String {
+        try await Task.sleep(nanoseconds: 200_000_000)
+        try Task.checkCancellation()
+        let index = lock.withLock { () -> Int in
+            inferCallCount += 1
+            return inferCallCount
+        }
+        return "\(source.rawValue)-\(index)"
+    }
+
+    func terminate() {
+        lock.withLock {
+            running = false
+            terminatedFlag = true
+        }
+    }
 }

@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 test -f Oatmeal.dmg
 hdiutil verify Oatmeal.dmg >/dev/null
 ruby -c Casks/oatmeal.rb >/dev/null
+command -v whisper-server >/dev/null || { echo "whisper-server is required (from the whisper-cpp formula) but was not found." >&2; exit 1; }
 
 mount_point=$(mktemp -d)
 trap 'hdiutil detach "$mount_point" >/dev/null 2>&1 || true; rmdir "$mount_point" 2>/dev/null || true' EXIT

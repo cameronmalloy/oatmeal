@@ -20,6 +20,7 @@ final class AppModel: ObservableObject {
     private let store: MeetingStore
     private let usesBacklogUITestFixture: Bool
     private var workflow: MeetingWorkflow?
+    private var transcriptionEngine: WhisperServerEngine?
     private var downloadTask: Task<Void, Never>?
 
     init() {
@@ -40,6 +41,9 @@ final class AppModel: ObservableObject {
             Task {
                 try? await workflow?.recoverInterruptedMeetings()
                 reloadHistory()
+            }
+            NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.transcriptionEngine?.shutdown() }
             }
         } catch {
             fatalError("Oatmeal could not open its local database: \(error.localizedDescription)")
@@ -207,13 +211,16 @@ final class AppModel: ObservableObject {
     }
 
     private func configureWorkflow() {
+        transcriptionEngine?.shutdown()
         guard
             let transcriptionPath = configuration.transcriptionModelPath,
-            let whisper = try? WhisperProcessEngine.bundled(modelURL: URL(fileURLWithPath: transcriptionPath))
+            let whisper = try? WhisperServerEngine.bundled(modelURL: URL(fileURLWithPath: transcriptionPath))
         else {
+            transcriptionEngine = nil
             workflow = nil
             return
         }
+        transcriptionEngine = whisper
         let clock = CaptureClock()
         let capture = DualCaptureCoordinator(
             microphone: MicrophoneCapture(clock: clock),
