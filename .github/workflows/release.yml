@@ -41,6 +41,9 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: scripts/release.sh "${GITHUB_REF_NAME#v}"
 
+      - name: Install cask runtime dependencies
+        run: brew install whisper-cpp llama.cpp
+
       - name: Verify DMG
         run: Tests/release-smoke.sh
 
