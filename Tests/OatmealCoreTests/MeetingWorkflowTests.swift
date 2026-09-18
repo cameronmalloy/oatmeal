@@ -257,7 +257,7 @@ final class MeetingWorkflowTests: XCTestCase {
         let firstStop = Task { try await workflow.stop() }
         for _ in 0..<1_000 {
             if await workflow.snapshot().status == .stopping { break }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         try await workflow.stop()
         await transcriber.release()
@@ -285,7 +285,7 @@ final class MeetingWorkflowTests: XCTestCase {
         await capture.send(.init(source: .microphone, startMS: 0, sampleRate: 1_000, channels: 1, samples: [0.1]))
         for _ in 0..<1_000 {
             if try store.meeting(id: meetingID)?.transcript.count == 1 { break }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         await transcriber.pause()
         await capture.send(.init(source: .microphone, startMS: 1, sampleRate: 1_000, channels: 1, samples: [0.1]))
@@ -295,14 +295,14 @@ final class MeetingWorkflowTests: XCTestCase {
         }
         for _ in 0..<1_000 {
             if await workflow.snapshot().droppedAudioChunks > 1 { break }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         let firstEpisode = await workflow.snapshot()
 
         await transcriber.release()
         for _ in 0..<1_000 {
             if await workflow.snapshot().status == .capturing { break }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         let recovered = await workflow.snapshot()
         await transcriber.pause()
@@ -315,7 +315,7 @@ final class MeetingWorkflowTests: XCTestCase {
         for _ in 0..<1_000 {
             let snapshot = await workflow.snapshot()
             if snapshot.droppedAudioChunks > firstEpisode.droppedAudioChunks, snapshot.status == .degraded { break }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         let secondEpisode = await workflow.snapshot()
 
